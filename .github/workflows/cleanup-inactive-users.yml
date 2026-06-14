@@ -2,8 +2,8 @@ name: Cleanup maintenance
 
 on:
   schedule:
-    - cron: "0 * * * *"   # runs every hour
-  workflow_dispatch:      # allows manual run
+    - cron: "0 0 * * *"   # runs once daily at 00:00 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,15 +15,10 @@ jobs:
     steps:
       - name: Trigger Cleanup Endpoints
         run: |
-          # 1. Cleanup Users
           echo "Cleaning up users..."
           curl -f -X POST https://api.verbrix.com/internal/cleanup/users \
           -H "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}"
-          
-          # 2. Cleanup Files (New)
+
           echo "Cleaning up orphaned files..."
           curl -f -X POST https://api.verbrix.com/internal/cleanup/files \
           -H "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}"
-          
-          
-          
