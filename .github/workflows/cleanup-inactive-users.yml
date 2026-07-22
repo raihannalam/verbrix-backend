@@ -2,7 +2,7 @@ name: Cleanup maintenance
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # runs once daily at 00:00 UTC
+    - cron: "0 0 * * *" # Every day at 00:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -11,14 +11,44 @@ permissions:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
-      - name: Trigger Cleanup Endpoints
+      - name: Verify maintenance secret
+        shell: bash
         run: |
-          echo "Cleaning up users..."
-          curl -f -X POST https://api.verbrix.com/internal/cleanup/users \
-          -H "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}"
+          if [ -z "${{ secrets.MAINTENANCE_KEY }}" ]; then
+            echo "::error::GitHub secret MAINTENANCE_KEY is not configured."
+            exit 1
+          fi
 
-          echo "Cleaning up orphaned files..."
-          curl -f -X POST https://api.verbrix.com/internal/cleanup/files \
-          -H "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}"
+          echo "✓ MAINTENANCE_KEY secret exists."
+
+      - name: Cleanup inactive users
+        shell: bash
+        run: |
+          echo "=== Cleaning up inactive users ==="
+
+          curl --request POST \
+            --verbose \
+            --fail-with-body \
+            --show-error \
+            --location \
+            --header "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}" \
+            https://api.verbrix.com/internal/cleanup/users
+
+      - name: Cleanup orphaned files
+        shell: bash
+        run: |
+          echo "=== Cleaning up orphaned files ==="
+
+          curl --request POST \
+            --verbose \
+            --fail-with-body \
+            --show-error \
+            --location \
+            --header "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}" \
+            https://api.verbrix.com/internal/cleanup/files
+
+      - name: Finished
+        run: echo "Maintenance completed successfully."
