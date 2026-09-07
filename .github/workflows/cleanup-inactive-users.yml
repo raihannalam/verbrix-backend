@@ -35,7 +35,7 @@ jobs:
             --show-error \
             --location \
             --header "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}" \
-            https://api.verbrix.com/internal/cleanup/users
+            https://api.verbrix.raihanalam.dev/internal/cleanup/users
 
       - name: Cleanup orphaned files
         shell: bash
