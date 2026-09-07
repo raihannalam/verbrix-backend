@@ -48,7 +48,7 @@ jobs:
             --show-error \
             --location \
             --header "X-MAINTENANCE-KEY: ${{ secrets.MAINTENANCE_KEY }}" \
-            https://api.verbrix.com/internal/cleanup/files
+            https://api.verbrix.raihanalam.dev/internal/cleanup/files
 
       - name: Finished
         run: echo "Maintenance completed successfully."
