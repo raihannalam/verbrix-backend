@@ -2,12 +2,16 @@ name: Build and Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/raihannalam/verbrixbackend
 
 jobs:
   build:
@@ -27,26 +31,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Robust Lowercase Conversion
-      - name: Prepare Repo Name
-        run: |
-          echo "REPO_NAME=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
-
-      - name: Build and Push Docker image
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ env.REPO_NAME }}:latest
-            ghcr.io/${{ env.REPO_NAME }}:${{ github.sha }}
-          # This instructs GHA to load the cache from the 'main' branch specifically
-          cache-from: type=gha,scope=build-${{ github.ref_name }}
-          # This writes the cache. mode=max ensures intermediate layers (dependencies) are saved.
-          cache-to: type=gha,mode=max,scope=build-${{ github.ref_name }}
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=build-main
+          cache-to: type=gha,mode=max,scope=build-main
+
+      - name: Verify Image
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker image inspect ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Trigger Render Deploy
-        if: success()
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          set -e
+
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK is missing"
+            exit 1
+          fi
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            -X POST \
+            "$RENDER_DEPLOY_HOOK"
+
+          echo "Render deployment triggered successfully."
