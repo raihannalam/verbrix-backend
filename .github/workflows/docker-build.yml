@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/raihannalam/verbrixbackend
+  IMAGE_NAME: ghcr.io/raihannalam/verbrix-backend
 
 jobs:
   build:
