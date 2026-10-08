@@ -33,7 +33,10 @@ public class DataInitializer implements CommandLineRunner {
 
     private final Random random = new Random();
 
-    // Realistic US first names
+    // =========================================================
+    // DATA
+    // =========================================================
+
     private static final List<String> FIRST_NAMES = Arrays.asList(
             "James", "Mary", "Robert", "Patricia", "John", "Jennifer",
             "Michael", "Linda", "David", "Elizabeth", "William", "Barbara",
@@ -42,7 +45,6 @@ public class DataInitializer implements CommandLineRunner {
             "Matthew", "Sandra", "Anthony", "Ashley", "Mark", "Emily"
     );
 
-    // Realistic US last names
     private static final List<String> LAST_NAMES = Arrays.asList(
             "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia",
             "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez",
@@ -53,28 +55,57 @@ public class DataInitializer implements CommandLineRunner {
 
     private static final String DOMAIN = "@verbrix.raihanalam.dev";
 
+    private static final int REQUIRED_INTERPRETERS = 10;
+
+    // =========================================================
+    // STARTUP
+    // =========================================================
+
     @Override
     @Transactional
     public void run(String... args) {
 
         log.info("Starting Production Data Initialization...");
 
+        // -----------------------------------------------------
+        // ROLES
+        // -----------------------------------------------------
+
         Role adminRole = getOrCreateRole(RoleType.ADMIN);
         Role interpreterRole = getOrCreateRole(RoleType.INTERPRETER);
 
+        // -----------------------------------------------------
+        // ADMIN
+        // -----------------------------------------------------
+
         createAdmins(adminRole);
-        createInterpreters(interpreterRole, 10);
+
+        // -----------------------------------------------------
+        // INTERPRETERS
+        // -----------------------------------------------------
+
+        createInterpreters(interpreterRole, REQUIRED_INTERPRETERS);
 
         log.info("Production Data Initialization Completed.");
     }
 
+    // =========================================================
+    // ROLES
+    // =========================================================
+
     private Role getOrCreateRole(RoleType roleType) {
+
         return roleRepository.findByName(roleType)
-                .orElseGet(() -> roleRepository.save(
-                        Role.builder()
-                                .name(roleType)
-                                .build()
-                ));
+                .orElseGet(() -> {
+
+                    log.info("Creating missing role: {}", roleType);
+
+                    return roleRepository.save(
+                            Role.builder()
+                                    .name(roleType)
+                                    .build()
+                    );
+                });
     }
 
     // =========================================================
@@ -83,7 +114,6 @@ public class DataInitializer implements CommandLineRunner {
 
     private void createAdmins(Role adminRole) {
 
-        // Only Raihan admin
         createAdminIfNotExists(
                 "raihanadmin@verbrix.raihanalam.dev",
                 "Raihan@2003!!!!",
@@ -97,10 +127,23 @@ public class DataInitializer implements CommandLineRunner {
             Role role
     ) {
 
+        // -----------------------------------------------------
+        // DO NOT CREATE IF ALREADY EXISTS
+        // -----------------------------------------------------
+
         if (userRepository.existsByEmail(email)) {
-            log.info("Admin {} already exists. Skipping.", email);
+
+            log.info(
+                    "Admin already exists: {}. Skipping.",
+                    email
+            );
+
             return;
         }
+
+        // -----------------------------------------------------
+        // CREATE ADMIN
+        // -----------------------------------------------------
 
         User admin = User.builder()
                 .email(email)
@@ -118,7 +161,47 @@ public class DataInitializer implements CommandLineRunner {
     // INTERPRETERS
     // =========================================================
 
-    private void createInterpreters(Role interpreterRole, int count) {
+    private void createInterpreters(
+            Role interpreterRole,
+            int requiredCount
+    ) {
+
+        // -----------------------------------------------------
+        // CHECK HOW MANY INTERPRETERS ALREADY EXIST
+        // -----------------------------------------------------
+
+        long existingCount = interpreterRepository.count();
+
+        log.info(
+                "Existing interpreters: {} / {}",
+                existingCount,
+                requiredCount
+        );
+
+        // -----------------------------------------------------
+        // EVERYTHING ALREADY EXISTS
+        // -----------------------------------------------------
+
+        if (existingCount >= requiredCount) {
+
+            log.info(
+                    "Required number of interpreters already exists. Skipping creation."
+            );
+
+            return;
+        }
+
+        // -----------------------------------------------------
+        // ONLY CREATE THE MISSING ONES
+        // -----------------------------------------------------
+
+        int missingCount =
+                requiredCount - (int) existingCount;
+
+        log.info(
+                "Creating {} missing interpreter(s).",
+                missingCount
+        );
 
         List<MedicalSpecialization> allSpecs =
                 Arrays.asList(MedicalSpecialization.values());
@@ -129,220 +212,298 @@ public class DataInitializer implements CommandLineRunner {
         List<GovernmentIdType> idTypes =
                 Arrays.asList(GovernmentIdType.values());
 
-        for (int i = 1; i <= count; i++) {
+        for (int i = 1; i <= missingCount; i++) {
 
-            // -------------------------------------------------
-            // Generate the person's name FIRST
-            // -------------------------------------------------
-
-            String firstName =
-                    FIRST_NAMES.get(random.nextInt(FIRST_NAMES.size()));
-
-            String lastName =
-                    LAST_NAMES.get(random.nextInt(LAST_NAMES.size()));
-
-            // -------------------------------------------------
-            // Convert name -> email
-            //
-            // Example:
-            // James Smith
-            // james.smith@verbrix.raihanalam.dev
-            // -------------------------------------------------
-
-            String email = generateUniqueEmail(firstName, lastName);
-
-            // -------------------------------------------------
-            // Create User
-            // -------------------------------------------------
-
-            User interpreterUser = User.builder()
-                    .email(email)
-                    .password(passwordEncoder.encode("Interpreter@123"))
-                    .isActive(true)
-                    .roles(Set.of(interpreterRole))
-                    .build();
-
-            interpreterUser = userRepository.save(interpreterUser);
-
-            // -------------------------------------------------
-            // Medical specializations
-            // -------------------------------------------------
-
-            Collections.shuffle(allSpecs);
-
-            Set<MedicalSpecialization> specs =
-                    allSpecs.stream()
-                            .limit(2)
-                            .collect(Collectors.toSet());
-
-            MedicalSpecialization primarySpec =
-                    specs.iterator().next();
-
-            // -------------------------------------------------
-            // Interpreter profile
-            // -------------------------------------------------
-
-            Interpreter interpreter = Interpreter.builder()
-                    .firstName(firstName)
-                    .lastName(lastName)
-
-                    .bio(
-                            String.format(
-                                    "Professional interpreter with expertise in %s. " +
-                                    "Committed to accurate medical communication.",
-                                    primarySpec.getLabel()
-                            )
-                    )
-
-                    .experienceYears(2 + random.nextInt(15))
-                    .experienceMonths(random.nextInt(12))
-
-                    .profilePictureUrl(
-                            "https://randomuser.me/api/portraits/"
-                                    + (random.nextBoolean() ? "men" : "women")
-                                    + "/"
-                                    + random.nextInt(99)
-                                    + ".jpg"
-                    )
-
-                    .governmentIdType(
-                            idTypes.get(random.nextInt(idTypes.size()))
-                    )
-
-                    .governmentIdDetails(
-                            "US-ID-" + (30000 + i)
-                    )
-
-                    .governmentIdUrl(
-                            "https://example.com/docs/id_" + i + ".jpg"
-                    )
-
-                    .introVideoUrl(
-                            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                    )
-
-                    .status(VerificationStatus.VERIFIED)
-                    .available(true)
-                    .online(i % 2 == 0)
-                    .lastSeenAt(Instant.now())
-
-                    .ratingCount(random.nextInt(150))
-
-                    .rating(
-                            BigDecimal.valueOf(
-                                    4.0 + (random.nextDouble() * 1.0)
-                            )
-                    )
-
-                    .consultationFee(
-                            BigDecimal.valueOf(
-                                    30 + random.nextInt(40)
-                            )
-                    )
-
-                    .serviceAgreementFee(
-                            BigDecimal.valueOf(150)
-                    )
-
-                    .recurringFeeAmount(
-                            BigDecimal.valueOf(49.99)
-                    )
-
-                    .recurringFeeFrequency(
-                            RecurringFeeFrequency.MONTHLY
-                    )
-
-                    .user(interpreterUser)
-
-                    .build();
-
-            interpreter.setSpecializations(specs);
-
-            // -------------------------------------------------
-            // Languages
-            // -------------------------------------------------
-
-            List<LanguageAbility> langs = new ArrayList<>();
-
-            // English - C2
-            langs.add(
-                    LanguageAbility.builder()
-                            .language(Language.EN)
-                            .proficiency(ProficiencyLevel.C2)
-                            .proofUrl(
-                                    "https://certs.verbrix.com/en_native.pdf"
-                            )
-                            .build()
-            );
-
-            // Second language
-            Language secondLang =
-                    allLanguages.get(
-                            random.nextInt(allLanguages.size())
-                    );
-
-            if (secondLang != Language.EN) {
-
-                langs.add(
-                        LanguageAbility.builder()
-                                .language(secondLang)
-                                .proficiency(
-                                        ProficiencyLevel.values()[
-                                                random.nextInt(
-                                                        ProficiencyLevel.values().length
-                                                )
-                                        ]
-                                )
-                                .proofUrl(
-                                        "https://certs.verbrix.com/lang_cert_"
-                                                + i
-                                                + ".pdf"
-                                )
-                                .build()
-                );
-            }
-
-            interpreter.setLanguageAbilities(langs);
-
-            interpreter =
-                    interpreterRepository.save(interpreter);
-
-            // -------------------------------------------------
-            // Certification
-            // -------------------------------------------------
-
-            certificationRepository.save(
-                    Certification.builder()
-                            .name(
-                                    "National Board Certified Medical Interpreter"
-                            )
-                            .issuingOrganization("NBCMI")
-                            .fileUrl(
-                                    "https://example.com/cert/cmi_"
-                                            + i
-                                            + ".pdf"
-                            )
-                            .description(
-                                    "Standard certification for US healthcare environments."
-                            )
-                            .issueDate(
-                                    LocalDate.now().minusYears(2)
-                            )
-                            .expiryDate(
-                                    LocalDate.now().plusYears(1)
-                            )
-                            .status(VerificationStatus.VERIFIED)
-                            .interpreter(interpreter)
-                            .build()
-            );
-
-            log.info(
-                    "Created Interpreter: {} {} -> {}",
-                    firstName,
-                    lastName,
-                    email
+            createSingleInterpreter(
+                    interpreterRole,
+                    allSpecs,
+                    allLanguages,
+                    idTypes
             );
         }
+    }
+
+    // =========================================================
+    // CREATE SINGLE INTERPRETER
+    // =========================================================
+
+    private void createSingleInterpreter(
+            Role interpreterRole,
+            List<MedicalSpecialization> allSpecs,
+            List<Language> allLanguages,
+            List<GovernmentIdType> idTypes
+    ) {
+
+        // -----------------------------------------------------
+        // GENERATE NAME
+        // -----------------------------------------------------
+
+        String firstName =
+                FIRST_NAMES.get(
+                        random.nextInt(FIRST_NAMES.size())
+                );
+
+        String lastName =
+                LAST_NAMES.get(
+                        random.nextInt(LAST_NAMES.size())
+                );
+
+        // -----------------------------------------------------
+        // GENERATE UNIQUE EMAIL
+        // -----------------------------------------------------
+
+        String email =
+                generateUniqueEmail(
+                        firstName,
+                        lastName
+                );
+
+        // -----------------------------------------------------
+        // USER
+        // -----------------------------------------------------
+
+        User interpreterUser = User.builder()
+                .email(email)
+                .password(
+                        passwordEncoder.encode(
+                                "Interpreter@123"
+                        )
+                )
+                .isActive(true)
+                .roles(Set.of(interpreterRole))
+                .build();
+
+        interpreterUser =
+                userRepository.save(interpreterUser);
+
+        // -----------------------------------------------------
+        // MEDICAL SPECIALIZATIONS
+        // -----------------------------------------------------
+
+        Collections.shuffle(allSpecs);
+
+        Set<MedicalSpecialization> specs =
+                allSpecs.stream()
+                        .limit(2)
+                        .collect(Collectors.toSet());
+
+        MedicalSpecialization primarySpec =
+                specs.iterator().next();
+
+        // -----------------------------------------------------
+        // INTERPRETER PROFILE
+        // -----------------------------------------------------
+
+        Interpreter interpreter = Interpreter.builder()
+
+                .firstName(firstName)
+
+                .lastName(lastName)
+
+                .bio(
+                        String.format(
+                                "Professional interpreter with expertise in %s. "
+                                        + "Committed to accurate medical communication.",
+                                primarySpec.getLabel()
+                        )
+                )
+
+                .experienceYears(
+                        2 + random.nextInt(15)
+                )
+
+                .experienceMonths(
+                        random.nextInt(12)
+                )
+
+                .profilePictureUrl(
+                        "https://randomuser.me/api/portraits/"
+                                + (random.nextBoolean()
+                                ? "men"
+                                : "women")
+                                + "/"
+                                + random.nextInt(99)
+                                + ".jpg"
+                )
+
+                .governmentIdType(
+                        idTypes.get(
+                                random.nextInt(
+                                        idTypes.size()
+                                )
+                        )
+                )
+
+                .governmentIdDetails(
+                        "US-ID-"
+                                + UUID.randomUUID()
+                )
+
+                .governmentIdUrl(
+                        "https://example.com/docs/id_"
+                                + UUID.randomUUID()
+                                + ".jpg"
+                )
+
+                .introVideoUrl(
+                        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                )
+
+                .status(
+                        VerificationStatus.VERIFIED
+                )
+
+                .available(true)
+
+                .online(false)
+
+                .lastSeenAt(
+                        Instant.now()
+                )
+
+                .ratingCount(
+                        random.nextInt(150)
+                )
+
+                .rating(
+                        BigDecimal.valueOf(
+                                4.0
+                                        + (
+                                        random.nextDouble()
+                                                * 1.0
+                                )
+                        )
+                )
+
+                .consultationFee(
+                        BigDecimal.valueOf(
+                                30 + random.nextInt(40)
+                        )
+                )
+
+                .serviceAgreementFee(
+                        BigDecimal.valueOf(150)
+                )
+
+                .recurringFeeAmount(
+                        BigDecimal.valueOf(49.99)
+                )
+
+                .recurringFeeFrequency(
+                        RecurringFeeFrequency.MONTHLY
+                )
+
+                .user(interpreterUser)
+
+                .build();
+
+        interpreter.setSpecializations(specs);
+
+        // -----------------------------------------------------
+        // LANGUAGES
+        // -----------------------------------------------------
+
+        List<LanguageAbility> langs =
+                new ArrayList<>();
+
+        // English - C2
+
+        langs.add(
+                LanguageAbility.builder()
+                        .language(Language.EN)
+                        .proficiency(
+                                ProficiencyLevel.C2
+                        )
+                        .proofUrl(
+                                "https://certs.verbrix.com/en_native.pdf"
+                        )
+                        .build()
+        );
+
+        // -----------------------------------------------------
+        // SECOND LANGUAGE
+        // -----------------------------------------------------
+
+        Language secondLang =
+                allLanguages.get(
+                        random.nextInt(
+                                allLanguages.size()
+                        )
+                );
+
+        if (secondLang != Language.EN) {
+
+            langs.add(
+                    LanguageAbility.builder()
+                            .language(secondLang)
+                            .proficiency(
+                                    ProficiencyLevel.values()[
+                                            random.nextInt(
+                                                    ProficiencyLevel
+                                                            .values()
+                                                            .length
+                                            )
+                                            ]
+                            )
+                            .proofUrl(
+                                    "https://certs.verbrix.com/lang_cert_"
+                                            + UUID.randomUUID()
+                                            + ".pdf"
+                            )
+                            .build()
+            );
+        }
+
+        interpreter.setLanguageAbilities(langs);
+
+        // -----------------------------------------------------
+        // SAVE INTERPRETER
+        // -----------------------------------------------------
+
+        interpreter =
+                interpreterRepository.save(
+                        interpreter
+                );
+
+        // -----------------------------------------------------
+        // CERTIFICATION
+        // -----------------------------------------------------
+
+        certificationRepository.save(
+                Certification.builder()
+                        .name(
+                                "National Board Certified Medical Interpreter"
+                        )
+                        .issuingOrganization("NBCMI")
+                        .fileUrl(
+                                "https://example.com/cert/cmi_"
+                                        + UUID.randomUUID()
+                                        + ".pdf"
+                        )
+                        .description(
+                                "Standard certification for US healthcare environments."
+                        )
+                        .issueDate(
+                                LocalDate.now()
+                                        .minusYears(2)
+                        )
+                        .expiryDate(
+                                LocalDate.now()
+                                        .plusYears(1)
+                        )
+                        .status(
+                                VerificationStatus.VERIFIED
+                        )
+                        .interpreter(interpreter)
+                        .build()
+        );
+
+        log.info(
+                "Created Interpreter: {} {} -> {}",
+                firstName,
+                lastName,
+                email
+        );
     }
 
     // =========================================================
@@ -354,36 +515,46 @@ public class DataInitializer implements CommandLineRunner {
             String lastName
     ) {
 
+        String first =
+                firstName.toLowerCase(Locale.ROOT);
+
+        String last =
+                lastName.toLowerCase(Locale.ROOT);
+
         String baseEmail =
-                firstName.toLowerCase(Locale.ROOT)
+                first
                         + "."
-                        + lastName.toLowerCase(Locale.ROOT)
+                        + last
                         + DOMAIN;
 
-        // First person with this name
+        // -----------------------------------------------------
+        // FIRST POSSIBILITY
+        // -----------------------------------------------------
+
         if (!userRepository.existsByEmail(baseEmail)) {
             return baseEmail;
         }
 
-        // Same name already exists
+        // -----------------------------------------------------
+        // TRY suffixes
+        // -----------------------------------------------------
+
         int suffix = 2;
 
-        while (
-                userRepository.existsByEmail(
-                        firstName.toLowerCase(Locale.ROOT)
-                                + "."
-                                + lastName.toLowerCase(Locale.ROOT)
-                                + suffix
-                                + DOMAIN
-                )
-        ) {
+        while (true) {
+
+            String email =
+                    first
+                            + "."
+                            + last
+                            + suffix
+                            + DOMAIN;
+
+            if (!userRepository.existsByEmail(email)) {
+                return email;
+            }
+
             suffix++;
         }
-
-        return firstName.toLowerCase(Locale.ROOT)
-                + "."
-                + lastName.toLowerCase(Locale.ROOT)
-                + suffix
-                + DOMAIN;
     }
 }
